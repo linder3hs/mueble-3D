@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aparador de melamina — Modelo 3D interactivo</title>
+<style>
+  :root {
+    --bg: #FAFAF7;
+    --surface: #F1EFE8;
+    --text-primary: #2C2C2A;
+    --text-secondary: #5F5E5A;
+    --text-tertiary: #888780;
+    --border: rgba(0,0,0,0.15);
+    --border-hover: rgba(0,0,0,0.3);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18;
+      --surface: #26262400;
+      --text-primary: #E8E6DA;
+      --text-secondary: #B4B2A9;
+      --text-tertiary: #888780;
+      --border: rgba(255,255,255,0.15);
+      --border-hover: rgba(255,255,255,0.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 500;
+    margin: 0 0 0.5rem;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    margin: 0 0 1.5rem;
+  }
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+  button {
+    background: transparent;
+    color: var(--text-primary);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  button:hover { background: var(--surface); border-color: var(--border-hover); }
+  button:active { transform: scale(0.98); }
+  label.check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-left: 8px;
+    cursor: pointer;
+  }
+  #canvas-wrap {
+    width: 100%;
+    height: 520px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    position: relative;
+    overflow: hidden;
+  }
+  #hint {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .specs {
+    margin-top: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .specs strong { color: var(--text-primary); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Aparador de melamina</h1>
+  <p class="subtitle">160 cm × 80 cm × 40 cm · modelo 3D interactivo</p>
+
+  <div id="controls">
+    <button id="btn-front">Frente</button>
+    <button id="btn-iso">Isométrica</button>
+    <button id="btn-top">Arriba</button>
+    <button id="btn-side">Lateral</button>
+    <button id="btn-explode">Explotar piezas</button>
+    <label class="check">
+      <input type="checkbox" id="chk-labels" checked> Cotas
+    </label>
+  </div>
+
+  <div id="canvas-wrap">
+    <div id="hint">Arrastra para rotar · rueda para zoom</div>
+  </div>
+
+  <div class="specs">
+    <strong>Controles:</strong> arrastra para rotar libremente · rueda del mouse para zoom · usa los botones para vistas fijas · &laquo;Explotar piezas&raquo; separa el despiece para visualizar el ensamble.
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  const wrap = document.getElementById('canvas-wrap');
+  const W = wrap.clientWidth, H = 520;
+
+  const scene = new THREE.Scene();
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  scene.background = null;
+
+  const camera = new THREE.PerspectiveCamera(35, W/H, 0.1, 2000);
+  const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  wrap.appendChild(renderer.domElement);
+
+  const amb = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  dir.position.set(100, 180, 120);
+  scene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dir2.position.set(-120, 80, -80);
+  scene.add(dir2);
+
+  const melamineColor = 0xD9B382;
+  const edgeColor = isDark ? 0x888780 : 0x5F5E5A;
+  const matMelamine = new THREE.MeshLambertMaterial({color: melamineColor});
+  const matBack = new THREE.MeshLambertMaterial({color: 0xB89062});
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  const T = 1.8;
+  const W_CAB = 160, H_CAB = 80, D_CAB = 40;
+  const innerW = W_CAB - 2*T;
+  const innerH = H_CAB - 2*T;
+  const colW = innerW / 4;
+
+  function addBox(w, h, d, x, y, z, mat, restPos){
+    const geom = new THREE.BoxGeometry(w, h, d);
+    const mesh = new THREE.Mesh(geom, mat || matMelamine);
+    mesh.position.set(x, y, z);
+    const edges = new THREE.EdgesGeometry(geom);
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color: edgeColor, linewidth: 1}));
+    line.position.set(x, y, z);
+    mesh.userData.restPos = {x, y, z};
+    line.userData.restPos = {x, y, z};
+    mesh.userData.explodeOffset = restPos || {x:0, y:0, z:0};
+    line.userData.explodeOffset = restPos || {x:0, y:0, z:0};
+    group.add(mesh);
+    group.add(line);
+    return {mesh, line};
+  }
+
+  addBox(W_CAB, T, D_CAB, 0, H_CAB/2 - T/2, 0, matMelamine, {x:0, y:20, z:0});
+  addBox(innerW, T, D_CAB, 0, -H_CAB/2 + T/2, 0, matMelamine, {x:0, y:-20, z:0});
+
+  addBox(T, H_CAB, D_CAB, -W_CAB/2 + T/2, 0, 0, matMelamine, {x:-25, y:0, z:0});
+  addBox(T, H_CAB, D_CAB,  W_CAB/2 - T/2, 0, 0, matMelamine, {x: 25, y:0, z:0});
+
+  const divXs = [-innerW/2 + colW, -innerW/2 + 2*colW, -innerW/2 + 3*colW];
+  divXs.forEach((x, i) => {
+    addBox(T, innerH, D_CAB, x, 0, 0, matMelamine, {x: (i-1)*8, y:0, z: 14});
+  });
+
+  addBox(innerW, T, D_CAB, 0, 0, 0, matMelamine, {x:0, y:0, z: -18});
+
+  const col2Left = -innerW/2 + colW;
+  const col2Right = -innerW/2 + 2*colW;
+  const col2CenterX = (col2Left + col2Right) / 2;
+  addBox(colW - T, T, D_CAB, col2CenterX, innerH/4, 0, matMelamine, {x:0, y:10, z: 20});
+
+  const col4Left = -innerW/2 + 3*colW;
+  const col4Right = innerW/2;
+  const col4CenterX = (col4Left + col4Right) / 2;
+  addBox(colW - T, T, D_CAB, col4CenterX, -innerH/4, 0, matMelamine, {x:0, y:-10, z: 20});
+
+  addBox(W_CAB - 2, H_CAB - 2*T - 0.2, 0.6, 0, 0, -D_CAB/2 + 0.3, matBack, {x:0, y:0, z:-30});
+
+  const zocaloH = 8;
+  addBox(innerW, zocaloH, 0.6, 0, -H_CAB/2 + T + zocaloH/2, -D_CAB/2 + 5, matMelamine, {x:0, y:-25, z:-10});
+
+  const machineBody = new THREE.Mesh(
+    new THREE.BoxGeometry(14, 18, 18),
+    new THREE.MeshLambertMaterial({color: 0x2C2C2A})
+  );
+  machineBody.position.set(-50, H_CAB/2 + 9, 2);
+  group.add(machineBody);
+  const portaFilter = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.2, 1.2, 4, 16),
+    new THREE.MeshLambertMaterial({color: 0x888780})
+  );
+  portaFilter.rotation.x = Math.PI / 2;
+  portaFilter.position.set(-50, H_CAB/2 + 6, 13);
+  group.add(portaFilter);
+  const tank = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 10, 6),
+    new THREE.MeshLambertMaterial({color: 0x444441})
+  );
+  tank.position.set(-50, H_CAB/2 + 14, -8);
+  group.add(tank);
+
+  const cup = new THREE.Mesh(
+    new THREE.CylinderGeometry(3, 2.5, 4, 20),
+    new THREE.MeshLambertMaterial({color: 0xF1EFE8})
+  );
+  cup.position.set(-20, H_CAB/2 + 2, 5);
+  group.add(cup);
+
+  const jar1 = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.5, 2.5, 8, 20),
+    new THREE.MeshLambertMaterial({color: 0x7a5a3a, transparent: true, opacity: 0.85})
+  );
+  jar1.position.set(30, H_CAB/2 + 4, -5);
+  group.add(jar1);
+  const jar2 = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.5, 2.5, 8, 20),
+    new THREE.MeshLambertMaterial({color: 0x7a5a3a, transparent: true, opacity: 0.85})
+  );
+  jar2.position.set(40, H_CAB/2 + 4, -5);
+  group.add(jar2);
+
+  let exploded = false;
+  function toggleExplode(){
+    exploded = !exploded;
+    group.children.forEach(obj => {
+      if (!obj.userData.restPos) return;
+      const r = obj.userData.restPos;
+      const o = obj.userData.explodeOffset;
+      if (exploded) {
+        obj.position.set(r.x + o.x*2, r.y + o.y*1.5, r.z + o.z*2);
+      } else {
+        obj.position.set(r.x, r.y, r.z);
+      }
+    });
+  }
+
+  const labelGroup = new THREE.Group();
+  scene.add(labelGroup);
+
+  function makeLabelSprite(text){
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 256; canvas.height = 64;
+    ctx.font = '500 24px sans-serif';
+    ctx.fillStyle = isDark ? '#E8E6DA' : '#2C2C2A';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 32);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({map: tex, transparent: true});
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(40, 10, 1);
+    return sprite;
+  }
+
+  const label1 = makeLabelSprite('160 cm');
+  label1.position.set(0, -H_CAB/2 - 8, D_CAB/2 + 5);
+  labelGroup.add(label1);
+  const label2 = makeLabelSprite('80 cm');
+  label2.position.set(-W_CAB/2 - 16, 0, D_CAB/2 + 5);
+  labelGroup.add(label2);
+  const label3 = makeLabelSprite('40 cm');
+  label3.position.set(W_CAB/2 + 18, -H_CAB/2 - 4, 0);
+  labelGroup.add(label3);
+
+  document.getElementById('chk-labels').addEventListener('change', (e) => {
+    labelGroup.visible = e.target.checked;
+  });
+
+  let yaw = 0.5, pitch = -0.3, dist = 280;
+  let dragging = false, lastX = 0, lastY = 0;
+
+  function updateCamera(){
+    camera.position.x = dist * Math.cos(pitch) * Math.sin(yaw);
+    camera.position.y = dist * Math.sin(-pitch);
+    camera.position.z = dist * Math.cos(pitch) * Math.cos(yaw);
+    camera.lookAt(0, 0, 0);
+  }
+  updateCamera();
+
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    renderer.domElement.setPointerCapture(e.pointerId);
+  });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    yaw += (e.clientX - lastX) * 0.008;
+    pitch += (e.clientY - lastY) * 0.008;
+    pitch = Math.max(-1.2, Math.min(1.2, pitch));
+    lastX = e.clientX; lastY = e.clientY;
+    updateCamera();
+  });
+  renderer.domElement.addEventListener('pointerup', () => { dragging = false; });
+  renderer.domElement.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    dist = Math.max(120, Math.min(500, dist + e.deltaY * 0.3));
+    updateCamera();
+  }, {passive: false});
+
+  function setView(y, p, d){
+    yaw = y; pitch = p; dist = d;
+    updateCamera();
+  }
+  document.getElementById('btn-front').onclick = () => setView(0, -0.05, 260);
+  document.getElementById('btn-iso').onclick = () => setView(0.5, -0.3, 280);
+  document.getElementById('btn-top').onclick = () => setView(0, -1.1, 280);
+  document.getElementById('btn-side').onclick = () => setView(Math.PI/2, -0.05, 220);
+  document.getElementById('btn-explode').onclick = toggleExplode;
+
+  function animate(){
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    const nW = wrap.clientWidth;
+    camera.aspect = nW / H;
+    camera.updateProjectionMatrix();
+    renderer.setSize(nW, H);
+  });
+})();
+</script>
+</body>
+</html>
